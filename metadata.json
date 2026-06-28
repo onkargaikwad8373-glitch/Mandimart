@@ -1,0 +1,6 @@
+{
+  "name": "MandiMate",
+  "description": "Wholesale vegetable stall management system to track purchases, sales, inventory, and profits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
