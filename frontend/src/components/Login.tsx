@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Sprout, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { useTranslation } from "../context/LanguageContext";
+import { apiFetch } from "../utils/api";
 
 export default function Login() {
   const { login, error, setError } = useAuth();
@@ -22,7 +23,7 @@ export default function Login() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

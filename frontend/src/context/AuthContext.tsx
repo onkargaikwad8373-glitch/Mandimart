@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User } from "../types";
 
+import { apiFetch } from "../utils/api";
+
 interface AuthContextType {
   token: string | null;
   user: Omit<User, "password"> | null;
@@ -34,11 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const res = await fetch("/api/auth/me", {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
+        const res = await apiFetch("/api/auth/me");
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
