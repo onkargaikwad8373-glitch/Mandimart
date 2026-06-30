@@ -710,22 +710,6 @@ export default function SalesSheet() {
                         </p>
                       )}
 
-                      {/* Quick chips */}
-                      {activeSession.farmerQuery.trim() === "" && uniqueFarmers.length > 0 && (
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Available Farmers</p>
-                          <div className="flex flex-wrap gap-2">
-                            {uniqueFarmers.map(f => (
-                              <button key={f.farmerId} type="button"
-                                onClick={() => selectFarmer(f)}
-                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                              >
-                                <Sprout className="w-3 h-3" /> {dt(f.name)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
