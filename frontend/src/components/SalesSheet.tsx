@@ -624,13 +624,20 @@ export default function SalesSheet() {
                   {STEPS.map((step, idx) => {
                     const done = isStepDone(step);
                     const active = activeSession.currentStep === step;
+                    const canClick = STEPS.indexOf(step) < STEPS.indexOf(activeSession.currentStep);
                     return (
                       <React.Fragment key={step}>
-                        <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                          active ? "bg-emerald-600 text-white shadow-sm"
-                          : done  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-50 text-slate-400 border border-slate-200"
-                        }`}>
+                        <button
+                          type="button"
+                          disabled={!canClick}
+                          onClick={() => canClick && patch({ currentStep: step })}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                            active ? "bg-emerald-600 text-white shadow-sm"
+                            : done && canClick ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                            : done ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-slate-50 text-slate-400 border border-slate-200"
+                          }`}
+                        >
                           {done && <CheckCircle className="w-3 h-3" />}
                           <span>{
                             step === "farmer" ? "Farmer" :
@@ -640,7 +647,7 @@ export default function SalesSheet() {
                             step === "rate" ? "Rate" :
                             step === "customer" ? "Customer" : "Total"
                           }</span>
-                        </div>
+                        </button>
                         {idx < STEPS.length - 1 && <ChevronRight className="w-3 h-3 text-slate-300 shrink-0" />}
                       </React.Fragment>
                     );
