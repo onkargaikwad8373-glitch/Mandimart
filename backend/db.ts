@@ -3,7 +3,7 @@ import path from "path";
 import { MongoClient, ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import { Farmer, Customer, Vegetable, Invoice, PaymentLog, User, PaymentStatus } from "./types";
-import { translateFields, translateText } from "./ai";
+import { translateFields, translateText, hasEnglishLetters, localTranslate } from "./ai";
 
 interface DBStructure {
   farmers: Farmer[];
@@ -142,14 +142,33 @@ async function getMongoDB() {
 
 // Helper functions for dynamic translations caching
 
+function needsHealing(original: string, translated: string, lang: string): boolean {
+  if (!translated || !original) return false;
+  
+  // Mix of Devanagari and English is a partial failure (e.g. "Onkar गायकवाड")
+  const isPartial = /[\u0900-\u097F]/.test(translated) && /[a-zA-Z]/.test(translated);
+  if (isPartial) return true;
+
+  // If the translation contains English letters, check if we can now translate it fully offline
+  if (hasEnglishLetters(translated)) {
+    const offlineVal = localTranslate(original, lang);
+    const canTranslateOffline = !hasEnglishLetters(offlineVal);
+    if (canTranslateOffline) return true;
+  }
+
+  return false;
+}
+
 async function translateFarmerDoc(farmer: any, lang: string): Promise<Farmer> {
   if (lang === "en" || !lang) {
     const { translations, _id, ...rest } = farmer;
     return rest;
   }
 
-  if (farmer.translations?.[lang]) {
-    const tData = farmer.translations[lang];
+  const tData = farmer.translations?.[lang];
+  const nameTranslation = tData?.name || "";
+
+  if (tData && !needsHealing(farmer.name, nameTranslation, lang)) {
     const { translations, _id, ...rest } = farmer;
     return {
       ...rest,
@@ -195,8 +214,10 @@ async function translateCustomerDoc(customer: any, lang: string): Promise<Custom
     return rest;
   }
 
-  if (customer.translations?.[lang]) {
-    const tData = customer.translations[lang];
+  const tData = customer.translations?.[lang];
+  const nameTranslation = tData?.name || "";
+
+  if (tData && !needsHealing(customer.name, nameTranslation, lang)) {
     const { translations, _id, ...rest } = customer;
     return {
       ...rest,
@@ -242,8 +263,10 @@ async function translateVegetableDoc(veg: any, lang: string): Promise<Vegetable>
     return rest;
   }
 
-  if (veg.translations?.[lang]) {
-    const tData = veg.translations[lang];
+  const tData = veg.translations?.[lang];
+  const vegNameTranslation = tData?.vegetableName || "";
+
+  if (tData && !needsHealing(veg.vegetableName, vegNameTranslation, lang)) {
     const { translations, _id, ...rest } = veg;
     return {
       ...rest,
@@ -289,8 +312,25 @@ async function translateInvoiceDoc(inv: any, lang: string): Promise<Invoice> {
     return rest;
   }
 
-  if (inv.translations?.[lang]) {
-    const tData = inv.translations[lang];
+  const tData = inv.translations?.[lang];
+  let invoiceNeedsHealing = false;
+  if (tData) {
+    if (needsHealing(inv.customerName, tData.customerName, lang)) {
+      invoiceNeedsHealing = true;
+    } else {
+      for (let idx = 0; idx < inv.items.length; idx++) {
+        const item = inv.items[idx];
+        const tItem = tData.items?.[idx] || {};
+        if (needsHealing(item.farmerName, tItem.farmerName, lang) ||
+            needsHealing(item.vegetableName, tItem.vegetableName, lang)) {
+          invoiceNeedsHealing = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (tData && !invoiceNeedsHealing) {
     const { translations, _id, ...rest } = inv;
     const translatedItems = inv.items.map((item: any, idx: number) => {
       const tItem = tData.items?.[idx] || {};
@@ -375,8 +415,10 @@ async function translatePaymentLogDoc(p: any, lang: string): Promise<PaymentLog>
     return rest;
   }
 
-  if (p.translations?.[lang]) {
-    const tData = p.translations[lang];
+  const tData = p.translations?.[lang];
+  const customerNameTranslation = tData?.customerName || "";
+
+  if (tData && !needsHealing(p.customerName, customerNameTranslation, lang)) {
     const { translations, _id, ...rest } = p;
     return {
       ...rest,

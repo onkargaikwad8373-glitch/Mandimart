@@ -16,7 +16,7 @@ if (process.env.GEMINI_API_KEY) {
 /**
  * Checks if a string contains any English letters (a-z, A-Z).
  */
-function hasEnglishLetters(text: string): boolean {
+export function hasEnglishLetters(text: string): boolean {
   return /[a-zA-Z]/.test(text);
 }
 
@@ -26,6 +26,12 @@ function hasEnglishLetters(text: string): boolean {
 function isDevanagari(text: string): boolean {
   return /[\u0900-\u097F]/.test(text);
 }
+
+// In-memory translation cache to drastically reduce remote API calls
+const translationCache: Record<string, Record<string, string>> = {
+  mr: {},
+  hi: {}
+};
 
 /**
  * Handles fast, offline-first translation lookup using our local dictionaries.
@@ -74,21 +80,31 @@ export async function translateFields(
 ): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
   const toTranslateRemotely: Record<string, string> = {};
+  const cache = translationCache[lang] || {};
 
-  // Step 1: Perform fast, free, offline local translation first for all provided fields
+  // Step 1: Perform fast, free, cache & offline local translation first for all provided fields
   for (const [key, val] of Object.entries(fields)) {
     if (!val || !val.trim() || lang === "en") {
       result[key] = (val || "").trim();
       continue;
     }
 
-    const offlineVal = localTranslate(val, lang);
+    const trimmed = val.trim();
+
+    // Check memory cache first
+    if (cache[trimmed]) {
+      result[key] = cache[trimmed];
+      continue;
+    }
+
+    const offlineVal = localTranslate(trimmed, lang);
     if (!hasEnglishLetters(offlineVal)) {
       // Complete offline match! Clean Marathi/Hindi string obtained, no Gemini call needed.
       result[key] = offlineVal;
+      cache[trimmed] = offlineVal; // Cache it!
     } else {
       // The local dictionary was insufficient. Queue this for the batch remote call.
-      toTranslateRemotely[key] = val.trim();
+      toTranslateRemotely[key] = trimmed;
     }
   }
 
@@ -99,14 +115,24 @@ export async function translateFields(
     return result;
   }
 
-  // If Gemini API Key is missing, placeholder, or client not initialized, fallback to MyMemory API
+  // If Gemini API Key is missing, placeholder, or client not initialized, fallback to MyMemory API (sequentially with delay to avoid rate limit)
   if (!process.env.GEMINI_API_KEY || !ai || process.env.GEMINI_API_KEY === "MY_GEMINI_API_KEY") {
-    const myMemoryPromises = remoteKeys.map(async (key) => {
+    for (let i = 0; i < remoteKeys.length; i++) {
+      const key = remoteKeys[i];
       const textToTranslate = toTranslateRemotely[key];
+      
       const translatedVal = await translateOnlineMyMemory(textToTranslate, lang);
       result[key] = translatedVal;
-    });
-    await Promise.all(myMemoryPromises);
+      
+      if (translatedVal && !hasEnglishLetters(translatedVal)) {
+        cache[textToTranslate] = translatedVal; // Cache the valid translation
+      }
+
+      // Add a small 150ms delay between consecutive requests to avoid MyMemory rate limits (HTTP 429)
+      if (i < remoteKeys.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    }
     return result;
   }
 
@@ -144,23 +170,49 @@ ${entriesPrompt}`;
       parsed = JSON.parse(cleanJson);
     }
 
-    for (const key of remoteKeys) {
+    for (let i = 0; i < remoteKeys.length; i++) {
+      const key = remoteKeys[i];
+      const textToTranslate = toTranslateRemotely[key];
+      
       if (parsed && typeof parsed[key] === "string" && parsed[key].trim()) {
         result[key] = parsed[key].trim();
-        console.log(`[MandiMate AI Remote] Batched translated dynamic key [${key}]: "${toTranslateRemotely[key]}" -> "${result[key]}"`);
+        console.log(`[MandiMate AI Remote] Batched translated dynamic key [${key}]: "${textToTranslate}" -> "${result[key]}"`);
+        
+        if (!hasEnglishLetters(result[key])) {
+          cache[textToTranslate] = result[key];
+        }
       } else {
-        result[key] = await translateOnlineMyMemory(toTranslateRemotely[key], lang);
+        // Fallback to MyMemory for this key
+        const translatedVal = await translateOnlineMyMemory(textToTranslate, lang);
+        result[key] = translatedVal;
+        
+        if (translatedVal && !hasEnglishLetters(translatedVal)) {
+          cache[textToTranslate] = translatedVal;
+        }
+
+        if (i < remoteKeys.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
       }
     }
   } catch (err: any) {
     console.error("[MandiMate AI Remote Error] Gemini translation error. Falling back to MyMemory:", err.message || err);
-    // Graceful fallback to MyMemory Translate
-    const myMemoryPromises = remoteKeys.map(async (key) => {
+    // Graceful fallback to MyMemory Translate, executed sequentially to avoid rate-limiting
+    for (let i = 0; i < remoteKeys.length; i++) {
+      const key = remoteKeys[i];
       const textToTranslate = toTranslateRemotely[key];
+      
       const translatedVal = await translateOnlineMyMemory(textToTranslate, lang);
       result[key] = translatedVal;
-    });
-    await Promise.all(myMemoryPromises);
+      
+      if (translatedVal && !hasEnglishLetters(translatedVal)) {
+        cache[textToTranslate] = translatedVal;
+      }
+
+      if (i < remoteKeys.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    }
   }
 
   return result;
