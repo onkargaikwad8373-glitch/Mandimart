@@ -414,21 +414,52 @@ async function syncCustomers(db: any): Promise<void> {
     const customers = await db.collection("customers").find({}).toArray();
     const invoices = await db.collection("invoices").find({}).toArray();
 
-    // Map customer ID to their total pending amount
+    // Map customer ID to their total pending amount and save their details
     const pendingAmounts: Record<string, number> = {};
+    const customerDetails: Record<string, { name: string; mobile: string; businessName: string }> = {};
+
     invoices.forEach((inv: any) => {
       const cId = inv.customerId;
       if (inv.amountPending > 0) {
         pendingAmounts[cId] = (pendingAmounts[cId] || 0) + inv.amountPending;
+        customerDetails[cId] = {
+          name: inv.customerName || "Walk-in Customer",
+          mobile: inv.customerMobile || "",
+          businessName: inv.customerBusiness || ""
+        };
       }
     });
 
     // Find customers with total pending <= 0 and delete them
     const toDelete = customers.filter((c: any) => !pendingAmounts[c.id] || pendingAmounts[c.id] <= 0);
+    const remainingCustomerIds = new Set<string>(customers.map((c: any) => c.id));
+
     if (toDelete.length > 0) {
       const idsToDelete = toDelete.map((c: any) => c.id);
       await db.collection("customers").deleteMany({ id: { $in: idsToDelete } });
       console.log(`[syncCustomers] Deleted ${toDelete.length} customers who have no outstanding pending invoices.`);
+      idsToDelete.forEach(id => remainingCustomerIds.delete(id));
+    }
+
+    // Auto-create customer records for any customer with a pending balance who is not yet in the customers collection
+    const newCustomersToInsert: any[] = [];
+    Object.keys(pendingAmounts).forEach(cId => {
+      if (!remainingCustomerIds.has(cId)) {
+        const details = customerDetails[cId];
+        newCustomersToInsert.push({
+          id: cId,
+          name: details.name,
+          mobile: details.mobile,
+          address: "",
+          businessName: details.businessName,
+          translations: {}
+        });
+      }
+    });
+
+    if (newCustomersToInsert.length > 0) {
+      await db.collection("customers").insertMany(newCustomersToInsert);
+      console.log(`[syncCustomers] Auto-registered ${newCustomersToInsert.length} new customers with outstanding balances.`);
     }
   } catch (err) {
     console.error("Error during syncCustomers:", err);
