@@ -969,21 +969,14 @@ export default function SalesSheet() {
                         )}
                       </div>
 
-                      {/* Proceed button for free-text customer */}
-                      {activeSession.customerName.trim() && (
-                        <div className="flex gap-3">
-                          <button
-                            onClick={proceedWithFreeTextCustomer}
-                            id="proceed-customer-btn"
-                            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm cursor-pointer transition-colors shadow-sm"
-                          >
-                            {filteredCusts.some(c => c.name.toLowerCase() === activeSession.customerName.toLowerCase())
-                              ? <><CheckCircle className="w-4 h-4" /> Confirm Customer</>
-                              : <><UserPlus className="w-4 h-4" /> Use "{activeSession.customerName.trim()}"</>
-                            }
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        onClick={proceedWithFreeTextCustomer}
+                        disabled={!activeSession.customerName.trim()}
+                        id="customer-next-btn"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm disabled:opacity-40 disabled:pointer-events-none cursor-pointer transition-colors shadow-sm"
+                      >
+                        Next: Item Total <ChevronRight className="w-4 h-4" />
+                      </button>
 
                       {/* Quick saved customer list */}
                       {activeSession.customerName.trim() === "" && (
